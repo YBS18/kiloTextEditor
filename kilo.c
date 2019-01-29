@@ -12,8 +12,19 @@
 void enableRawMode();
 void disableRawMode();
 void die(const char *s);
+char editorReadKey();
+void editorProcessKeypress();
+void editorRefreshScreen();
+void editorDrawRows();
 
-struct termios originalTermios;
+
+struct editorConfig
+{
+	struct termios originalTermios;	
+};
+
+struct editorConfig E; 
+
 
 int main()
 {
@@ -21,19 +32,10 @@ int main()
 
 	while (1)
 	{
-		char c = '\0';
-		//read terminal for input
-		if(read(STDIN_FILENO, &c, 1) == -1 && errno != EAGAIN) die("read");
-		//check if control char
-		if (iscntrl(c))
-		{
-			printf("%d\r\n", c);
-		}
-		else
-		{
-			printf("%d ('%c')\r\n", c, c);
-		}
-		if (c == CTRL_KEY('q')) break;
+		//clears screen
+		editorRefreshScreen();
+
+		editorProcessKeypress();
 	}
 
 	return 0;
@@ -43,10 +45,10 @@ int main()
 void enableRawMode()
 {
 	//read terminal attributes to strcut raw	
-	if (tcgetattr(STDIN_FILENO, &originalTermios) == -1) die("tcgetattr");
+	if (tcgetattr(STDIN_FILENO, &E.originalTermios) == -1) die("tcgetattr");
 	atexit(disableRawMode);
 	
-	struct termios raw = originalTermios;
+	struct termios raw = E.originalTermios;
 	// turns off signals for raw mode
 	raw.c_iflag &= ~(IXON | ICRNL | BRKINT | INPCK | ISTRIP);
 	raw.c_cflag |= (CS8);
@@ -62,13 +64,63 @@ void enableRawMode()
 //disables terminal Raw mode
 void disableRawMode()
 {
-	if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &originalTermios) == -1)
+	if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.originalTermios) == -1)
 		die("tcsetattr");
 }
 
 //error producing function
 void die(const char *s)
 {
+	write(STDOUT_FILENO, "\x1b[2J", 4);
+  	write(STDOUT_FILENO, "\x1b[H", 3);
+
+
 	perror(s);
 	exit(1);
+}
+
+//reads input from terminal
+char editorReadKey()
+{
+	int nread = 1;
+	char c;
+	while((nread == read(STDIN_FILENO, &c, 1)) != 1)
+	{
+		if (nread == -1 && errno != EAGAIN) die("read");
+	}
+	return c;
+}
+
+//Processes each key press
+void editorProcessKeypress()
+{
+	char c = editorReadKey();
+
+	switch (c)
+	{
+		case CTRL_KEY('q'):
+			write(STDOUT_FILENO, "\x1b[2J", 4);
+  			write(STDOUT_FILENO, "\x1b[H", 3);
+			exit(0);
+			break;
+	}
+}
+
+void editorRefreshScreen()
+{
+	write(STDOUT_FILENO, "\x1b[2J", 4);
+	write(STDOUT_FILENO, "\x1b[H", 3);
+
+	editorDrawRows();
+
+	write(STDOUT_FILENO, "\x1b[H", 3);
+}
+
+void editorDrawRows()
+{
+	int y;
+	for (y = 0; y < 24; y++)
+	{
+		write(STDOUT_FILENO, "~\r\n", 3);
+	}
 }
