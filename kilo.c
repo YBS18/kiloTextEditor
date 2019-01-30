@@ -15,6 +15,7 @@
 
 struct editorConfig
 {
+	int cx, cy;
 	struct termios originalTermios;
 	int screenRows;
 	int screenCols;	
@@ -27,12 +28,20 @@ struct abuf {
 	int len;
 };
 
+enum editorKey
+{
+	ARROW_LEFT = 1000,
+	ARROW_RIGHT,
+	ARROW_UP,
+	ARROW_DOWN
+};
+
 
 
 void enableRawMode();
 void disableRawMode();
 void die(const char *s);
-char editorReadKey();
+int editorReadKey();
 void editorProcessKeypress();
 void editorRefreshScreen();
 void editorDrawRows(struct abuf *ab);
@@ -41,6 +50,7 @@ void initEditor();
 int getCursorPosition(int *rows, int *cols);
 void abAppend(struct abuf *ab, const char *s, int len);
 void abFree(struct abuf *ab);
+void editorMoveCursor(int key);
 
 
 
@@ -102,7 +112,7 @@ void die(const char *s)
 }
 
 //reads input from terminal
-char editorReadKey()
+int editorReadKey()
 {
 	int nread = 1;
 	char c;
@@ -110,13 +120,38 @@ char editorReadKey()
 	{
 		if (nread == -1 && errno != EAGAIN) die("read");
 	}
-	return c;
+	
+	if (c == "\x1b")
+	{
+		char seq[3];
+
+		if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
+		if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
+
+		if (seq[0] == '[')
+		{
+			switch(seq[1])
+			{
+				case 'A' : return ARROW_UP;
+				case 'B' : return ARROW_DOWN;
+				case 'C' : return ARROW_RIGHT;
+				case 'D' : return ARROW_LEFT;
+			}
+		}
+
+		return '\x1b';
+	}
+	else
+	{
+		return c;
+	}
+
 }
 
 //Processes each key press
 void editorProcessKeypress()
 {
-	char c = editorReadKey();
+	int c = editorReadKey();
 
 	switch (c)
 	{
@@ -124,6 +159,13 @@ void editorProcessKeypress()
 			write(STDOUT_FILENO, "\x1b[2J", 4);
   			write(STDOUT_FILENO, "\x1b[H", 3);
 			exit(0);
+			break;
+
+		case ARROW_UP:
+		case ARROW_DOWN:
+		case ARROW_LEFT:
+		case ARROW_RIGHT:
+			editorMoveCursor(c);
 			break;
 	}
 }
@@ -138,8 +180,9 @@ void editorRefreshScreen()
 
 	editorDrawRows(&ab);
 
-	abAppend(&ab, "\x1b[H", 3);
-	abAppend(&ab, "\x1b[?25h", 6);
+	char buf[32];
+	snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
+	abAppend(&ab, buf, strlen(buf));
 
 	write(STDOUT_FILENO, ab.b, ab.len);
 	abFree(&ab);
@@ -205,7 +248,11 @@ int getWindowSize(int *rows, int *cols)
 // initializes struct editor
 void initEditor()
 {
+	E.cx = 0;
+	E.cy = 0;
+
 	if (getWindowSize(&E.screenRows, &E.screenCols) == -1) die("getWindowSize");
+
 }
 
 int getCursorPosition(int *rows, int *cols)
@@ -243,4 +290,35 @@ void abAppend(struct abuf *ab, const char *s, int len)
 void abFree(struct abuf *ab)
 {
 	free(ab->b);
+}
+
+void editorMoveCursor(int key)
+{
+	switch (key)
+	{
+		case ARROW_LEFT:
+			if (E.cx != 0)
+			{
+				E.cx--;
+			}
+			break;
+		case ARROW_RIGHT:
+			if (E.cx != E.screenCols - 1)
+			{
+				E.cx++;
+			}
+			break;
+		case ARROW_UP:
+			if (E.cy != 0)
+			{
+				E.cy--;
+			}
+			break;
+		case ARROW_DOWN:
+			if (E.cy != E.screenRows - 1)
+			{
+				E.cy++;
+			}
+			break;
+	}
 }
