@@ -1,5 +1,5 @@
-# kiloTextEditor
-Text editor with C
+
+# Text editor with C
 
 
 Implementation of kilo text editor tutorial
